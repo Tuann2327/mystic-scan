@@ -11,7 +11,7 @@ A button opens the order in the **Shopify app**. If you tick **Auto-open Shopify
 ## How it works
 
 ```
-phone (public/index.html) ──POST /api/lookup──► server.js ──Admin GraphQL──► Shopify
+phone (public/index.html) ──POST /api/lookup──► Netlify Function / server.js ──Admin GraphQL──► Shopify
 ```
 
 - **Scanning:** Android Chrome uses the phone's built-in barcode reader. iPhone/Safari uses ZXing (WebAssembly), which the page loads by itself. The scanner reads full-resolution frames, which helps with the long USPS barcodes.
@@ -19,8 +19,15 @@ phone (public/index.html) ──POST /api/lookup──► server.js ──Admin 
   - UPS: the `1Z…` Code 128 barcode.
   - USPS: the IMpb barcode (`420` + ZIP + tracking number). The app removes the ZIP prefix.
   - The short "420 + ZIP" routing barcode on UPS labels is ignored.
-- **Finding the order:** the server keeps a list of tracking numbers from orders updated in the last `LOOKBACK_DAYS` days (default 45). After the first load, it only fetches orders that changed since the last refresh. Most scans come back right away.
-- **Access token:** your Shopify token stays on the server and never reaches the phone. Set `APP_PIN` so only your staff can look up customer data.
+- **Finding the order:** Shopify's order search finds an order by its tracking number. Every result is double-checked against the order's actual tracking numbers before it's shown. A lookup takes about a second.
+- **Access token:** your Shopify token stays on the server (or in Netlify's environment variables) and never reaches the phone. Set `APP_PIN` so only your staff can look up customer data.
+
+| File | Role |
+|---|---|
+| `public/` | The phone app (static files) |
+| `lib/shopify.js` | Shopify lookup, shared by both runtimes |
+| `netlify/functions/` | `/api/lookup` and `/api/config` on Netlify |
+| `server.js` | Local server, for running on your own PC |
 
 ## 1. Connect to Shopify
 
@@ -42,23 +49,43 @@ Copy `.env.example` to `.env` and fill it in:
 
 ## 2. Run it
 
-Requires Node 20.12+. There are no packages to install.
+Requires Node 20.12+. There are no packages to install. (Skip this step if you deploy to Netlify.)
 
 ```bash
 npm start
 ```
 
-## 3. Open it on the phone (HTTPS is required)
+## 3. Deploy to Netlify (recommended)
 
-Phones only allow the camera on `https://` pages. Pick one option:
+Netlify gives you an `https://` address, which phones require before they allow the camera.
 
-- **Quick test from your PC:** run a free Cloudflare tunnel and open the `https://…trycloudflare.com` link it prints on your phone:
-  ```bash
-  npx cloudflared tunnel --url http://localhost:3000
-  ```
-- **Permanent:** deploy this folder to any Node host, such as Render, Railway or Fly.io. Use `npm start` as the start command and add the `.env` values as environment variables.
+1. **Netlify → Add new project → Import an existing project → GitHub →** pick `mystic-scan`.
+2. The build settings come from `netlify.toml`, so leave the form as it is:
+   - Build command: *(empty)*
+   - Publish directory: `public`
+   - Functions directory: `netlify/functions`
+3. **Site configuration → Environment variables →** add:
 
-On the phone, choose **Add to Home Screen** so the app opens full screen like a native app.
+   | Key | Value |
+   |---|---|
+   | `SHOPIFY_STORE_DOMAIN` | `your-store.myshopify.com` |
+   | `SHOPIFY_ADMIN_TOKEN` | your `shpat_…` token (mark it **secret**) |
+   | `APP_PIN` | a PIN for staff. **Strongly recommended:** the Netlify address is public, and without a PIN anyone who finds it can look up customer names and addresses. |
+
+   Optional: `SHOPIFY_STORE_HANDLE`, `SHOPIFY_API_VERSION`.
+4. **Deploys → Trigger deploy.** Environment variables only take effect on a new deploy.
+5. Open `https://<your-site>.netlify.app` on the phone, enter the PIN, and choose **Add to Home Screen**.
+
+Every push to `main` redeploys automatically.
+
+**Check it works:** `https://<your-site>.netlify.app/api/config` should show `{"pinRequired":true,"configured":true}`.
+
+## Running locally instead
+
+`npm start` serves the app on `http://localhost:3000`. Phones need HTTPS for the camera, so either:
+
+- **Tunnel:** run `npx cloudflared tunnel --url http://localhost:3000` and open the printed `https://…trycloudflare.com` link; or
+- **Self-signed certificate:** put `key.pem` and `cert.pem` in `certs/`. The server then also listens on `https://<PC-IP>:3443`, and the phone shows a one-time certificate warning. `certs/` is git-ignored.
 
 ## Opening the Shopify app
 
@@ -71,8 +98,7 @@ If your admin URL uses a different store handle than your myshopify subdomain, s
 
 ## Troubleshooting
 
-- **"No order found":**
-  - The tracking number has to be on the order's fulfillment. This happens automatically when you buy the label in Shopify Shipping or a shipping app that syncs tracking.
-  - Orders older than `LOOKBACK_DAYS` aren't indexed. Raise the value if you need older orders; orders older than 60 days also need the `read_all_orders` scope.
+- **"No order found":** the tracking number has to be on the order's fulfillment. This happens automatically when you buy the label in Shopify Shipping or a shipping app that syncs tracking.
+- **"Server is not connected to Shopify":** the environment variables are missing. On Netlify, add them and redeploy.
 - **USPS barcode won't read:** hold the label flat and fill the frame with the barcode. Tap the ⚡ button to turn on the flashlight in dim light.
 - **Camera is black:** make sure the page is `https://` and that the browser has camera permission.

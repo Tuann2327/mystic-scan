@@ -1,0 +1,23 @@
+# Netlify: static app from /public + two serverless functions for the Shopify lookup.
+# Set SHOPIFY_STORE_DOMAIN, SHOPIFY_ADMIN_TOKEN and APP_PIN in
+# Site configuration -> Environment variables (never commit them).
+
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = ""
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=(self)"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
