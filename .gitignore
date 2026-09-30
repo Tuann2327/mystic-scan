@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+certs/
+*.pem
+*.key
+
+# Local / tooling
+node_modules/
+.claude/
+Claude outputs/
+.DS_Store
+Thumbs.db

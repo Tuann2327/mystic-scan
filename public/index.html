@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1013">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mystic Scan">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Mystic Scan</title>
+<style>
+  :root {
+    --bg: #0e1013;
+    --surface: #171a1f;
+    --surface-2: #20242b;
+    --border: #2c313a;
+    --text: #f2f4f7;
+    --muted: #9aa3b2;
+    --accent: #3ddc84;
+    --accent-ink: #062b14;
+    --shopify: #008060;
+    --warn: #ffb020;
+    --danger: #ff5c5c;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body {
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 12px);
+  }
+  .bar, .controls { flex: none; }
+  button, input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  .bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; }
+  .brand { font-weight: 700; letter-spacing: .2px; }
+  .brand small { color: var(--muted); font-weight: 500; margin-left: 6px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); display: grid; place-items: center; cursor: pointer;
+  }
+  .icon-btn[aria-pressed="true"] { background: var(--warn); color: #231600; border-color: var(--warn); }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .bar-actions { display: flex; gap: 8px; }
+
+  .camera {
+    position: relative; margin: 0 16px; flex: 1 1 auto; min-height: 0;
+    border-radius: var(--radius); overflow: hidden; background: #000;
+  }
+  .camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .frame {
+    position: absolute; left: 6%; right: 6%; top: 32%; bottom: 32%;
+    border: 2px solid rgba(255,255,255,.55); border-radius: 12px;
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,.25); pointer-events: none; transition: border-color .15s;
+  }
+  .laser { position: absolute; left: 4%; right: 4%; top: 50%; height: 2px; background: var(--accent); opacity: 0; }
+  .armed .frame { border-color: var(--accent); }
+  .armed .laser { opacity: 1; animation: sweep 1.2s ease-in-out infinite alternate; }
+  .hit .frame { border-color: var(--accent); box-shadow: 0 0 0 100vmax rgba(61,220,132,.25); }
+  @keyframes sweep { from { top: 12%; } to { top: 88%; } }
+  .cam-status {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; text-align: center;
+    font-size: 14px; padding: 6px 10px; border-radius: 10px; background: rgba(0,0,0,.6);
+  }
+  .cam-status:empty { display: none; }
+
+  .controls { padding: 12px 16px 0; display: grid; gap: 10px; }
+  .scan-btn {
+    width: 100%; min-height: 64px; border: 0; border-radius: var(--radius);
+    background: var(--accent); color: var(--accent-ink); font-size: 20px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;
+  }
+  .scan-btn:active { transform: scale(.985); }
+  .scan-btn.armed { background: var(--surface-2); color: var(--text); outline: 2px solid var(--accent); }
+  .scan-btn:disabled { opacity: .6; }
+  .scan-btn svg { width: 24px; height: 24px; }
+
+  .check {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); cursor: pointer; user-select: none;
+  }
+  .check input { width: 22px; height: 22px; accent-color: var(--shopify); margin: 0; flex: none; }
+  .check small { display: block; color: var(--muted); font-size: 13px; }
+
+  .manual { display: flex; gap: 8px; }
+  .manual input {
+    flex: 1; min-width: 0; height: 46px; padding: 0 12px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface); text-transform: uppercase;
+  }
+  .manual input::placeholder { text-transform: none; color: var(--muted); }
+  .manual button {
+    height: 46px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface-2); cursor: pointer;
+  }
+
+  /* Order popup (bottom sheet) */
+  .sheet-backdrop {
+    position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.55);
+    display: flex; align-items: flex-end; justify-content: center;
+    animation: fade .18s ease-out;
+  }
+  .sheet {
+    width: 100%; max-width: 560px; max-height: calc(100dvh - env(safe-area-inset-top) - 24px);
+    background: var(--surface); border: 1px solid var(--border); border-bottom: 0;
+    border-radius: 22px 22px 0 0; display: flex; flex-direction: column; overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: rise .24s cubic-bezier(.2,.8,.2,1);
+  }
+  .sheet.closing { animation: sink .18s ease-in forwards; }
+  .grabber { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto 0; flex: none; }
+  .sheet-content { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+  .sheet-body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1 1 auto; }
+  @keyframes rise { from { transform: translateY(100%); } }
+  @keyframes sink { to { transform: translateY(100%); } }
+  @keyframes fade { from { opacity: 0; } }
+  .close-btn {
+    flex: none; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--surface-2);
+    display: grid; place-items: center; cursor: pointer; color: var(--muted);
+  }
+  .close-btn svg { width: 18px; height: 18px; }
+  .card-head { padding: 12px 16px 16px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .head-right { display: flex; gap: 10px; align-items: flex-start; }
+  .order-no { font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .cust { font-size: 18px; font-weight: 600; margin-top: 4px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+  .pill.ok { background: rgba(61,220,132,.15); color: var(--accent); }
+  .section { padding: 12px 16px; border-top: 1px solid var(--border); }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 4px; }
+  .addr { white-space: pre-line; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; word-break: break-all; }
+  .items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .item { display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: center; }
+  .thumb { width: 52px; height: 52px; border-radius: 10px; background: var(--surface-2); object-fit: cover; }
+  .item-title { font-weight: 600; }
+  .item-meta { color: var(--muted); font-size: 13px; }
+  .qty { font-weight: 800; font-size: 18px; min-width: 44px; text-align: right; }
+  .qty.multi { color: var(--warn); }
+  .actions { flex: none; padding: 12px 16px 16px; display: grid; grid-template-columns: 1fr auto; gap: 10px; border-top: 1px solid var(--border); background: var(--surface); }
+  .actions .btn-ghost { padding: 0 20px; }
+  .actions .btn:only-child { grid-column: 1 / -1; }
+  .btn {
+    min-height: 54px; border-radius: 14px; border: 0; font-weight: 700; font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
+  }
+  .btn-shopify { background: var(--shopify); color: #fff; }
+  .btn-ghost { background: var(--surface-2); color: var(--text); }
+  .btn svg { width: 22px; height: 22px; }
+  .msg { padding: 16px; }
+  .msg.err { color: var(--danger); }
+  .msg .mono { color: var(--muted); margin-top: 6px; }
+  .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading { display: flex; align-items: center; gap: 12px; }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    color: var(--text); width: min(92vw, 360px); padding: 20px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h2 { margin: 0 0 6px; font-size: 20px; }
+  dialog p { margin: 0 0 14px; color: var(--muted); }
+  dialog input {
+    width: 100%; height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); font-size: 20px; letter-spacing: 4px; text-align: center; margin-bottom: 12px;
+  }
+  dialog .btn { width: 100%; background: var(--accent); color: var(--accent-ink); }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">Mystic Scan <small>UPS · USPS</small></div>
+    <div class="bar-actions">
+      <button id="torchBtn" class="icon-btn" aria-label="Flashlight" aria-pressed="false" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+      </button>
+      <button id="flipBtn" class="icon-btn" aria-label="Switch camera" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-2-3H9L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="m15 12-3-3-3 3M9 14l3 3 3-3"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="camera" id="camera">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="frame"><div class="laser"></div></div>
+    <div class="cam-status" id="camStatus">Starting camera…</div>
+  </section>
+
+  <section class="controls">
+    <button id="scanBtn" class="scan-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
+      <span id="scanLabel">Tap to scan</span>
+    </button>
+    <label class="check">
+      <input type="checkbox" id="autoOpen">
+      <span>Auto-open Shopify after scan<small>Jumps straight to the order in the Shopify app</small></span>
+    </label>
+    <form id="manualForm" class="manual" autocomplete="off">
+      <input id="manualInput" placeholder="Or type a tracking #" autocapitalize="characters" spellcheck="false" enterkeyhint="search">
+      <button type="submit">Look up</button>
+    </form>
+  </section>
+
+  <div id="sheet" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="Order details">
+      <div class="grabber"></div>
+      <div id="result" class="sheet-content" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <dialog id="pinDialog">
+    <form method="dialog" id="pinForm">
+      <h2>Enter PIN</h2>
+      <p>This scanner is protected. Enter the team PIN to continue.</p>
+      <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" required>
+      <button class="btn" type="submit">Unlock</button>
+    </form>
+  </dialog>
+
+<script type="module">
+import { parseCarrierBarcode, parseManual } from './carrier.js';
+
+const $ = (s) => document.querySelector(s);
+const video = $('#video');
+const camera = $('#camera');
+const camStatus = $('#camStatus');
+const scanBtn = $('#scanBtn');
+const scanLabel = $('#scanLabel');
+const autoOpen = $('#autoOpen');
+const result = $('#result');
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const ARM_TIMEOUT_MS = 20000;
+const state = {
+  stream: null, track: null, detector: null,
+  armed: false, armTimer: null,
+  facing: 'environment', torch: false, pin: store.get('pin', ''),
+  audio: null, lastOrder: null,
+};
+
+// ---------- settings ----------
+autoOpen.checked = store.get('autoOpen', false);
+autoOpen.addEventListener('change', () => store.set('autoOpen', autoOpen.checked));
+
+// ---------- barcode detector (native on Android Chrome, ZXing WASM elsewhere e.g. iOS) ----------
+async function getDetector() {
+  if (state.detector) return state.detector;
+  const formats = ['code_128'];
+  if ('BarcodeDetector' in window) {
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      if (supported.includes('code_128')) return (state.detector = new window.BarcodeDetector({ formats }));
+    } catch {}
+  }
+  const { BarcodeDetector } = await import('https://cdn.jsdelivr.net/npm/barcode-detector@2.3.1/dist/es/pure.min.js');
+  return (state.detector = new BarcodeDetector({ formats }));
+}
+
+// ---------- camera (always on while the page is visible) ----------
+async function startCamera() {
+  if (state.stream) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    camStatus.textContent = 'Camera needs HTTPS. Open this page via an https:// link.';
+    return;
+  }
+  camStatus.textContent = 'Starting camera…';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: state.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+    state.stream = stream;
+    state.track = stream.getVideoTracks()[0];
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    camStatus.textContent = '';
+    try { await state.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+    const caps = state.track.getCapabilities?.() ?? {};
+    $('#torchBtn').hidden = !caps.torch;
+    state.torch = false;
+    $('#torchBtn').setAttribute('aria-pressed', 'false');
+    navigator.mediaDevices.enumerateDevices().then((d) => {
+      $('#flipBtn').hidden = d.filter((x) => x.kind === 'videoinput').length < 2;
+    });
+    getDetector().catch((e) => console.error('Detector load failed', e)); // warm up
+  } catch (err) {
+    console.error(err);
+    camStatus.textContent = err.name === 'NotAllowedError'
+      ? 'Camera blocked — allow camera access in your browser settings, then reload.'
+      : `Camera error: ${err.message}`;
+  }
+}
+
+function stopCamera() {
+  state.stream?.getTracks().forEach((t) => t.stop());
+  state.stream = state.track = null;
+  video.srcObject = null;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { disarm(); stopCamera(); } else startCamera();
+});
+window.addEventListener('pageshow', () => startCamera());
+
+$('#torchBtn').addEventListener('click', async () => {
+  if (!state.track) return;
+  state.torch = !state.torch;
+  try { await state.track.applyConstraints({ advanced: [{ torch: state.torch }] }); } catch { state.torch = false; }
+  $('#torchBtn').setAttribute('aria-pressed', String(state.torch));
+});
+$('#flipBtn').addEventListener('click', async () => {
+  state.facing = state.facing === 'environment' ? 'user' : 'environment';
+  stopCamera();
+  await startCamera();
+});
+
+// ---------- scanning ----------
+scanBtn.addEventListener('click', () => {
+  unlockAudio();
+  state.armed ? disarm() : arm();
+});
+
+// One tap = one scan session. It ends on the first UPS/USPS read, on timeout, or on cancel.
+// `session` changes on every arm/disarm, so a loop from an older session can never fire again.
+let session = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function arm() {
+  if (state.armed) return;
+  if (!state.stream) startCamera();
+  const id = ++session;
+  state.armed = true;
+  camera.classList.add('armed');
+  scanBtn.classList.add('armed');
+  scanLabel.textContent = 'Scanning… tap to cancel';
+  camStatus.textContent = '';
+  clearTimeout(state.armTimer);
+  state.armTimer = setTimeout(() => {
+    if (id !== session) return;
+    disarm();
+    camStatus.textContent = 'No UPS/USPS barcode found — tap to scan again.';
+    setTimeout(() => { if (camStatus.textContent.startsWith('No UPS')) camStatus.textContent = ''; }, 3500);
+  }, ARM_TIMEOUT_MS);
+  scanLoop(id);
+}
+
+function disarm() {
+  session++;
+  state.armed = false;
+  clearTimeout(state.armTimer);
+  camera.classList.remove('armed');
+  scanBtn.classList.remove('armed');
+  scanLabel.textContent = 'Tap to scan';
+}
+
+async function scanLoop(id) {
+  while (id === session) {
+    if (video.readyState >= 2) {
+      try {
+        const codes = await (await getDetector()).detect(video);
+        if (id !== session) return; // cancelled while decoding
+        const hit = codes.map((c) => parseCarrierBarcode(c.rawValue)).find(Boolean);
+        if (hit) { onScanned(hit); return; }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    await sleep(80);
+  }
+}
+
+function onScanned(parsed) {
+  disarm(); // back to "Tap to scan" immediately, before the lookup runs
+  feedback();
+  lookup(parsed);
+}
+
+$('#manualForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const parsed = parseManual($('#manualInput').value);
+  if (!parsed) { showError('Enter a full tracking number.'); return; }
+  $('#manualInput').blur();
+  lookup(parsed);
+});
+
+// ---------- feedback ----------
+function unlockAudio() {
+  try { state.audio ??= new (window.AudioContext || window.webkitAudioContext)(); state.audio.resume(); } catch {}
+}
+function feedback() {
+  navigator.vibrate?.(80);
+  camera.classList.add('hit');
+  setTimeout(() => camera.classList.remove('hit'), 400);
+  const ctx = state.audio;
+  if (!ctx) return;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.frequency.value = 1250; gain.gain.value = 0.15;
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.09);
+}
+
+// ---------- lookup ----------
+async function lookup(parsed) {
+  state.lastOrder = null;
+  openSheet(`<div class="sheet-body"><div class="msg loading"><div class="spinner"></div>
+    <div>Looking up ${esc(parsed.carrier)} <span class="mono">${esc(parsed.tracking)}</span>…</div></div></div>`);
+  try {
+    const res = await fetch('/api/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Pin': state.pin },
+      body: JSON.stringify({ code: parsed.raw }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { store.set('pin', ''); state.pin = ''; await askPin(); return lookup(parsed); }
+    if (!res.ok) { showError(data.error || `Lookup failed (${res.status})`, parsed); return; }
+    state.lastOrder = data.order;
+    renderOrder(data.order, parsed);
+    if (autoOpen.checked) openShopify(data.order);
+  } catch (err) {
+    showError(`Network error: ${err.message}`, parsed);
+  }
+}
+
+// ---------- popup sheet ----------
+const sheet = $('#sheet');
+const CLOSE_ICON = `<button class="close-btn" data-act="close" aria-label="Close">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+
+function openSheet(html) {
+  result.innerHTML = html;
+  sheet.querySelector('.sheet').classList.remove('closing');
+  sheet.hidden = false;
+}
+
+function closeSheet() {
+  if (sheet.hidden) return Promise.resolve();
+  const panel = sheet.querySelector('.sheet');
+  panel.classList.add('closing');
+  return new Promise((r) => setTimeout(() => { sheet.hidden = true; panel.classList.remove('closing'); result.innerHTML = ''; r(); }, 170));
+}
+
+sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+function showError(message, parsed) {
+  openSheet(`<div class="sheet-body"><div class="card-head"><div class="msg err" style="padding:0">${esc(message)}
+    ${parsed ? `<div class="mono">${esc(parsed.carrier)} · ${esc(parsed.tracking)}</div>` : ''}</div>${CLOSE_ICON}</div></div>
+    <div class="actions"><button class="btn btn-ghost" data-act="continue">Continue</button></div>`);
+}
+
+function renderOrder(o, parsed) {
+  const addr = o.shippingAddress;
+  const totalQty = o.items.reduce((n, i) => n + i.quantity, 0);
+  openSheet(`
+  <div class="sheet-body">
+    <div class="card-head">
+      <div>
+        <div class="order-no">${esc(o.name)}</div>
+        <div class="cust">${esc(o.customerName || addr?.name || 'No customer')}</div>
+        <div class="pills" style="justify-content:flex-start;margin-top:8px">
+          <span class="pill ${o.fulfillmentStatus === 'FULFILLED' ? 'ok' : ''}">${esc(pretty(o.fulfillmentStatus))}</span>
+          <span class="pill">${esc(pretty(o.financialStatus))}</span>
+        </div>
+      </div>
+      ${CLOSE_ICON}
+    </div>
+    <div class="section">
+      <div class="label">Ship to</div>
+      <div class="addr">${addr ? esc([addr.name, addr.company, ...addr.lines].filter(Boolean).join('\n')) : 'No shipping address'}</div>
+      ${o.shippingMethod ? `<div class="item-meta" style="margin-top:6px">${esc(o.shippingMethod)}</div>` : ''}
+    </div>
+    <div class="section">
+      <div class="label">Items · ${totalQty}</div>
+      <ul class="items">
+        ${o.items.map((i) => `
+        <li class="item">
+          ${i.image ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy">` : '<div class="thumb"></div>'}
+          <div>
+            <div class="item-title">${esc(i.title)}</div>
+            <div class="item-meta">${esc([i.variant, i.sku && `SKU ${i.sku}`].filter(Boolean).join(' · '))}</div>
+          </div>
+          <div class="qty ${i.quantity > 1 ? 'multi' : ''}">×${i.quantity}</div>
+        </li>`).join('')}
+      </ul>
+    </div>
+    ${o.note ? `<div class="section"><div class="label">Note</div>${esc(o.note)}</div>` : ''}
+    <div class="section">
+      <div class="label">Tracking</div>
+      <div class="mono">${esc(parsed.carrier)} · ${esc(parsed.tracking)}</div>
+    </div>
+  </div>
+  <div class="actions">
+      <button class="btn btn-shopify" data-act="shopify">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>
+        Open in Shopify
+      </button>
+      <button class="btn btn-ghost" data-act="continue">Continue</button>
+  </div>`);
+}
+
+result.addEventListener('click', async (e) => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'shopify' && state.lastOrder) openShopify(state.lastOrder);
+  if (act === 'close') closeSheet();
+  if (act === 'continue') closeSheet(); // back to idle — staff taps "Tap to scan" for the next label
+});
+
+// Opens the order in the Shopify mobile app.
+// Android: intent URL targets the Shopify app package directly (falls back to the web admin).
+// iOS: admin.shopify.com is a universal link the Shopify app claims.
+function openShopify(order) {
+  const url = order.adminUrl;
+  if (/Android/i.test(navigator.userAgent)) {
+    window.location.href = `intent://${url.replace(/^https:\/\//, '')}#Intent;scheme=https;package=com.shopify.mobile;` +
+      `S.browser_fallback_url=${encodeURIComponent(url)};end`;
+  } else {
+    window.location.href = url;
+  }
+  // Auto-continue: dismiss the popup so the scanner is idle and ready when staff come back.
+  setTimeout(() => { state.lastOrder = null; closeSheet(); }, 400);
+}
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function pretty(s) { return String(s || '').toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()); }
+
+function askPin() {
+  return new Promise((resolve) => {
+    const dlg = $('#pinDialog');
+    $('#pinInput').value = '';
+    dlg.addEventListener('close', () => {
+      state.pin = $('#pinInput').value.trim();
+      store.set('pin', state.pin);
+      resolve();
+    }, { once: true });
+    dlg.showModal();
+  });
+}
+
+// ---------- boot ----------
+(async () => {
+  startCamera();
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    if (cfg.pinRequired && !state.pin) await askPin();
+    if (!cfg.configured) showError('Server is not connected to Shopify yet — see README.');
+  } catch {}
+})();
+</script>
+</body>
+</html>
